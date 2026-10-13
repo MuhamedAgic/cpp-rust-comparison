@@ -12,6 +12,7 @@
 #include <concepts>
 #include <cmath>
 #include <utility>
+#include <random>
 
 using u64 = uint64_t;
 using u32 = uint32_t;
@@ -50,11 +51,21 @@ void print_vec_parts(const std::vector<std::pair<Numeric, Numeric>>& vec) {
 }
 
 // ==================================== FIXTURES ==================================== 
+
+
+    
 template<typename Numeric>
 [[nodiscard]] 
-std::vector<Numeric> create_vec(u32 n) {
-    std::vector<Numeric> vec(n); // reserve n elements
-    std::iota(vec.begin(), vec.end(), 1); // {1, 2, 3, ..., n}
+std::vector<Numeric> create_vec() {
+    std::vector<Numeric> vec;
+    vec.reserve(vec_size);
+
+    std::mt19937 engine;
+    std::uniform_int_distribution<> uniform_dist(1,10);
+    for (long long i = 0; i < vec_size; ++i) {
+        vec.emplace_back(uniform_dist(engine));
+    }
+
     return vec;
 }
 
@@ -203,57 +214,60 @@ u64 sum_vec_multi_threaded_with_atomics(
     return sum.load(MemoryOrder);
 }
 
+// ==================================== USING STD ASYNC ==================================== 
+
+
 // ==================================== MAIN ==================================== 
 int main() {
-    auto vec = create_vec<u32>(vec_size);
+    auto vec = create_vec<u32>();
 
     {
         ScopedTimer t;
         std::cout << "\nSequential std::accumulate\n";
         auto res = sum_vec_seq(vec);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     {
         ScopedTimer t;
         std::cout << "\nSequential for loop\n";
         auto res = sum_vec_seq_v2(vec);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     {
         ScopedTimer t;
         std::cout << "\nUsing execution policy: std::execution::seq\n";
         auto res = sum_vec_par(vec, std::execution::seq);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     {
         ScopedTimer t;
         std::cout << "\nUsing execution policy: std::execution::par\n";
         auto res = sum_vec_par(vec, std::execution::par);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     {
         ScopedTimer t;
         std::cout << "\nUsing execution policy: std::execution::par_unseq\n";
         auto res = sum_vec_par(vec, std::execution::par_unseq);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     {
         ScopedTimer t;
         std::cout << "\nSingle threaded with lock protection\n";
         auto res = sum_vec_with_lock(vec);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     {
         ScopedTimer t;
         std::cout << "\nSingle threaded with atomic protection\n";
         auto res = sum_vec_with_atomic(vec);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     std::cout << "\nDividing in parts\n\n";
@@ -266,35 +280,35 @@ int main() {
         ScopedTimer t;
         std::cout << "\n\nMulti threaded with lock protection\n";
         auto res = sum_vec_multi_threaded_with_lock(vec, vec_parts);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     {
         ScopedTimer t;
         std::cout << "\n\nMulti threaded with atomic protection (sequential consistency)\n";
         auto res = sum_vec_multi_threaded_with_atomics<std::memory_order_seq_cst>(vec, vec_parts);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     {
         ScopedTimer t;
         std::cout << "\n\nMulti threaded with atomic protection (acquire)\n";
         auto res = sum_vec_multi_threaded_with_atomics<std::memory_order_acquire>(vec, vec_parts);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     {
         ScopedTimer t;
         std::cout << "\n\nMulti threaded with atomic protection (consume)\n";
         auto res = sum_vec_multi_threaded_with_atomics<std::memory_order_consume>(vec, vec_parts);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
     {
         ScopedTimer t;
         std::cout << "\n\nMulti threaded with atomic protection (relaxed semantic)\n";
         auto res = sum_vec_multi_threaded_with_atomics<std::memory_order_relaxed>(vec, vec_parts);
-        std::cout << "Sum result:" << res << "\n";
+        std::cout << "Sum result: " << res << "\n";
     }
 
 
