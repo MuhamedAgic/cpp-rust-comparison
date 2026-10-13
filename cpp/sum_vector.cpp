@@ -16,7 +16,7 @@
 using u64 = uint64_t;
 using u32 = uint32_t;
 
-constexpr int vec_size = 10'000'000;
+constexpr int vec_size = 100'000'000;
 const auto n_hw_treads = std::thread::hardware_concurrency();
 
 
@@ -62,7 +62,6 @@ std::vector<Numeric> create_vec(u32 n) {
 template<typename Numeric>
 [[nodiscard]] 
 u64 sum_vec_seq(const std::vector<Numeric>& vec) {
-    std::cout << "Using std::accumulate \n";
     return std::accumulate(
         vec.begin(), 
         vec.end(), 
@@ -73,7 +72,6 @@ u64 sum_vec_seq(const std::vector<Numeric>& vec) {
 template<typename Numeric>
 [[nodiscard]] 
 u64 sum_vec_seq_v2(const std::vector<Numeric>& vec) {
-    std::cout << "Basic for loop \n";
     u64 sum = 0;
     for (const auto& elem : vec) {
         sum += elem;
@@ -85,7 +83,6 @@ u64 sum_vec_seq_v2(const std::vector<Numeric>& vec) {
 template<typename T, typename Numeric> requires std::is_execution_policy_v<T>
 [[nodiscard]] 
 u64 sum_vec_par(const std::vector<Numeric>& vec, const T& execution_policy) {
-    std::cout << "Using execution policy: " << demangle<T>() << "\n";
     return std::reduce(
         execution_policy,
         vec.begin(), 
@@ -121,63 +118,140 @@ u64 sum_vec_with_atomic(const std::vector<Numeric>& vec) {
 // ==================================== LOCK PROTECTION (MULTI THREADED) ==================================== 
 std::mutex myMutex;
 
-template<typename Numeric>
-[[nodiscard]] 
-u64 sum_vec_part(
+template<typename Numeric> 
+void sum_vec_part_with_lock(
+    u64& sum,
     const std::vector<Numeric>& vec,
     const u32 begin_range,
     const u32 end_range
 ) {
     u64 part_sum = {};
     for (int i = begin_range; i < end_range; i++) {
-        std::lock_guard<std::mutex> m_lock_guard(myMutex);
         part_sum += vec[i];
     }
-    return part_sum;
+    std::lock_guard<std::mutex> m_lock_guard(myMutex);
+    sum += part_sum;
 }
 
+template<typename Numeric>
+[[nodiscard]] 
+u64 sum_vec_multi_threaded_with_lock(
+    const std::vector<Numeric>& vec,
+    std::vector<std::pair<u32, u32>>& parts
+) {
+    u64 sum = 0;
+    std::vector<std::thread> worker_threads;
+    worker_threads.reserve(n_hw_treads);
 
+    for (int i = 0; i < n_hw_treads; i++) {
+        std::thread worker = std::thread(sum_vec_part_with_lock<Numeric>, std::ref(sum), std::cref(vec), parts[i].first, parts[i].second);
+        worker_threads.emplace_back(std::move(worker));
+    }
+    for (auto& worker : worker_threads) {
+        if (worker.joinable()) {
+            worker.join();
+        }
+    }
+    return sum;
+}
+
+// ==================================== ATOMIC PROTECTION (MULTI THREADED) ==================================== 
+
+// 1. NTTP Concept: Constrain a value 'Order' to be std::memory_order
+template<std::memory_order Order>
+concept ValidMemoryOrder = true;
+
+template<typename Numeric, std::memory_order MemoryOrder>
+void sum_vec_part_with_atomic(
+    std::atomic<u64>& sum,
+    const std::vector<Numeric>& vec,
+    const u32 begin_range,
+    const u32 end_range
+) {
+    u64 part_sum = {};
+    for (int i = begin_range; i < end_range; i++) {
+        part_sum += vec[i];
+    }
+    sum.fetch_add(part_sum, MemoryOrder);
+}
+
+template<std::memory_order MemoryOrder, typename Numeric>
+[[nodiscard]] 
+u64 sum_vec_multi_threaded_with_atomics(
+    const std::vector<Numeric>& vec,
+    std::vector<std::pair<u32, u32>>& parts
+) {
+    std::atomic<u64> sum = 0;
+    std::vector<std::thread> worker_threads;
+    worker_threads.reserve(n_hw_treads);
+
+    for (int i = 0; i < n_hw_treads; i++) {
+        std::thread worker = std::thread(
+            sum_vec_part_with_atomic<Numeric, MemoryOrder>, 
+            std::ref(sum), 
+            std::cref(vec), 
+            parts[i].first, 
+            parts[i].second        
+        );
+        worker_threads.emplace_back(std::move(worker));
+    }
+    for (auto& worker : worker_threads) {
+        if (worker.joinable()) {
+            worker.join();
+        }
+    }
+    return sum.load(MemoryOrder);
+}
+
+// ==================================== MAIN ==================================== 
 int main() {
     auto vec = create_vec<u32>(vec_size);
 
     {
         ScopedTimer t;
+        std::cout << "\nSequential std::accumulate\n";
         auto res = sum_vec_seq(vec);
         std::cout << "Sum result:" << res << "\n";
     }
 
     {
         ScopedTimer t;
+        std::cout << "\nSequential for loop\n";
         auto res = sum_vec_seq_v2(vec);
         std::cout << "Sum result:" << res << "\n";
     }
 
     {
         ScopedTimer t;
+        std::cout << "\nUsing execution policy: std::execution::seq\n";
         auto res = sum_vec_par(vec, std::execution::seq);
         std::cout << "Sum result:" << res << "\n";
     }
 
     {
         ScopedTimer t;
+        std::cout << "\nUsing execution policy: std::execution::par\n";
         auto res = sum_vec_par(vec, std::execution::par);
         std::cout << "Sum result:" << res << "\n";
     }
 
     {
         ScopedTimer t;
+        std::cout << "\nUsing execution policy: std::execution::par_unseq\n";
         auto res = sum_vec_par(vec, std::execution::par_unseq);
         std::cout << "Sum result:" << res << "\n";
     }
 
     {
         ScopedTimer t;
+        std::cout << "\nSingle threaded with lock protection\n";
         auto res = sum_vec_with_lock(vec);
         std::cout << "Sum result:" << res << "\n";
     }
 
     {
         ScopedTimer t;
+        std::cout << "\nSingle threaded with atomic protection\n";
         auto res = sum_vec_with_atomic(vec);
         std::cout << "Sum result:" << res << "\n";
     }
@@ -188,7 +262,40 @@ int main() {
     std::cout << "Parts:\n";
     print_vec_parts(vec_parts);
 
+    {
+        ScopedTimer t;
+        std::cout << "\n\nMulti threaded with lock protection\n";
+        auto res = sum_vec_multi_threaded_with_lock(vec, vec_parts);
+        std::cout << "Sum result:" << res << "\n";
+    }
 
+    {
+        ScopedTimer t;
+        std::cout << "\n\nMulti threaded with atomic protection (sequential consistency)\n";
+        auto res = sum_vec_multi_threaded_with_atomics<std::memory_order_seq_cst>(vec, vec_parts);
+        std::cout << "Sum result:" << res << "\n";
+    }
+
+    {
+        ScopedTimer t;
+        std::cout << "\n\nMulti threaded with atomic protection (acquire)\n";
+        auto res = sum_vec_multi_threaded_with_atomics<std::memory_order_acquire>(vec, vec_parts);
+        std::cout << "Sum result:" << res << "\n";
+    }
+
+    {
+        ScopedTimer t;
+        std::cout << "\n\nMulti threaded with atomic protection (consume)\n";
+        auto res = sum_vec_multi_threaded_with_atomics<std::memory_order_consume>(vec, vec_parts);
+        std::cout << "Sum result:" << res << "\n";
+    }
+
+    {
+        ScopedTimer t;
+        std::cout << "\n\nMulti threaded with atomic protection (relaxed semantic)\n";
+        auto res = sum_vec_multi_threaded_with_atomics<std::memory_order_relaxed>(vec, vec_parts);
+        std::cout << "Sum result:" << res << "\n";
+    }
 
 
 
