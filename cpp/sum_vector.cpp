@@ -41,6 +41,7 @@ std::vector<std::pair<u32, u32>> get_divided_vector_parts(const std::vector<Nume
     }
     return parts;
 }
+//
 
 template<typename Numeric>
 void print_vec_parts(const std::vector<std::pair<Numeric, Numeric>>& vec) {
