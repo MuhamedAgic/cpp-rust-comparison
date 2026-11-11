@@ -99,6 +99,6 @@ void safe_example() {
 
 
 int main() {
-    unsafe_example();
     safe_example();
+    unsafe_example();
 }

@@ -2,25 +2,26 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-// fn broken() {
-//     let mut counter = 0;
+#[cfg(feature = "show_broken")]
+fn broken() {
+    let mut counter = 0;
 
-//     // We try to borrow `counter` mutably in two threads
-//     let handle1 = thread::spawn(|| {
-//         for _ in 0..100_000 {
-//             counter += 1;
-//         }
-//     });
+    // We try to borrow `counter` mutably in two threads
+    let handle1 = thread::spawn(|| {
+        for _ in 0..100_000 {
+            counter += 1;
+        }
+    });
 
-//     let handle2 = thread::spawn(|| {
-//         for _ in 0..100_000 {
-//             counter += 1;
-//         }
-//     });
+    let handle2 = thread::spawn(|| {
+        for _ in 0..100_000 {
+            counter += 1;
+        }
+    });
 
-//     handle1.join().unwrap();
-//     handle2.join().unwrap();
-// }
+    handle1.join().unwrap();
+    handle2.join().unwrap();
+}
 
 fn valid() {
     let counter = Arc::new(AtomicUsize::new(0));

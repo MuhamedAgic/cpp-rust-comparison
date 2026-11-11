@@ -20,7 +20,51 @@ impl BankAccount {
     }
 }
 
-fn main() {
+#[cfg(feature = "show_broken")]
+fn deposit_wrong_no_mutex() {
+    // Shared ownership across threads, but NO Mutex
+    let account = Arc::new(BankAccount::new(0));
+
+    let acc1 = Arc::clone(&account);
+    let handle1 = thread::spawn(move || {
+        for _ in 0..10_000 {
+            acc1.deposit(10); // COMPILER ERROR!
+        }
+    });
+
+    let acc2 = Arc::clone(&account);
+    let handle2 = thread::spawn(move || {
+        for _ in 0..10_000 {
+            acc2.deposit(20); // COMPILER ERROR!
+        }
+    });
+
+    handle1.join().unwrap();
+    handle2.join().unwrap();
+}
+
+#[cfg(feature = "show_broken")]
+fn deposit_wrong_borrow() {
+    let mut account = BankAccount::new(0);
+
+    let handle1 = thread::spawn(|| {
+        for _ in 0..10_000 {
+            account.deposit(10); // COMPILER ERROR 1: May outlive function + mutable borrow
+        }
+    });
+
+    let handle2 = thread::spawn(|| {
+        for _ in 0..10_000 {
+            account.deposit(20); // COMPILER ERROR 2: Second mutable borrow!
+        }
+    });
+
+    handle1.join().unwrap();
+    handle2.join().unwrap();
+}
+
+
+fn deposit_example() {
     // 1. Arc provides shared ownership across threads; Mutex guards internal data
     let account = Arc::new(Mutex::new(BankAccount::new(0)));
 
@@ -58,4 +102,8 @@ fn main() {
     assert_eq!(final_acc.balance, 300_000);
     assert_eq!(final_acc.transactions.len(), 20_000);
     println!("Status           : Guaranteed correct at compile time!\n");
+}
+
+fn main() {
+    deposit_example();
 }

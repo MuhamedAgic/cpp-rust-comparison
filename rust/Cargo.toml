@@ -17,3 +17,6 @@ path = "src/simple_number_inc.rs"
 [[bin]]
 name = "use_after_free"
 path = "src/use_after_free.rs"
+
+[features]
+show_broken = []
